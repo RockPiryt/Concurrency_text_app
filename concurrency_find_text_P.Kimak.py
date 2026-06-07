@@ -63,7 +63,7 @@ def podziel_tekst(text, liczba_procesow, dlugosc_wzorca):
     overlap = max(0, dlugosc_wzorca - 1)
     rozmiar = n // liczba_procesow
 
-    przedzialy = []
+    fragmenty = []
 
     for nr in range(liczba_procesow):
         start = nr * rozmiar
@@ -73,9 +73,10 @@ def podziel_tekst(text, liczba_procesow, dlugosc_wzorca):
             end = (nr + 1) * rozmiar
         # zakładka - żeby znaleźć wzorzec na granicy fragmentów
         end = min(n, end + overlap)
-        przedzialy.append((start, end))
+        fragment = text[start:end]
+        fragmenty.append((start, end, fragment))
 
-    return przedzialy
+    return fragmenty
 
 # Proces 0 czyta dane 
 if nr_procesu == 0:
@@ -95,13 +96,11 @@ else:
     lista_przedzialow = None
 
 # Rozsyłanie danych
-tekst = comm.bcast(tekst, root=0)
 klucz = comm.bcast(klucz, root=0)
 
 badany_przedzial = comm.scatter(lista_przedzialow, root=0)
 
-start, end = badany_przedzial
-fragment = tekst[start:end]
+start, end, fragment = badany_przedzial
 
 znaleziono = False
 wynik = None
