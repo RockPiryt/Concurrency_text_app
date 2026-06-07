@@ -1,4 +1,7 @@
 '''
+AUTOR: Paulina Kimak
+NR INDEKSU: 292511
+Treść zadania:
 W zadaniu chodzi o napisanie pewnej wersji przeszukiwania
 pliku pod kątem słowa kluczowego. Na wejściu powinniśmy dostać:
 a. ścieżkę pliku;
@@ -39,14 +42,22 @@ def prefix_function(pattern):
     return pi
 
 # Knuth-Morris-Pratt algorytm
-def kmp_search(text, pattern):
+def kmp_search_with_stop(text, pattern, comm, nr_procesu):
     if pattern == "":
-        return True
+        return 1
 
     pi = prefix_function(pattern)
     j = 0
 
     for i in range(len(text)):
+
+        # co pewien czas sprawdzamy, czy inny proces już znalazł wynik
+        if i % 1000 == 0:
+            if comm.iprobe(source=MPI.ANY_SOURCE, tag=TAG_STOP):
+                wynik, kto_znalazl = comm.recv(source=MPI.ANY_SOURCE, tag=TAG_STOP)
+                print(f"Proces {nr_procesu}: kończę, bo proces {kto_znalazl} znalazł klucz", flush=True)
+                return -1
+
         while j > 0 and text[i] != pattern[j]:
             j = pi[j - 1]
 
@@ -54,9 +65,9 @@ def kmp_search(text, pattern):
             j += 1
 
         if j == len(pattern):
-            return True
+            return 1
 
-    return False
+    return 0
 
 def podziel_tekst(text, liczba_procesow, dlugosc_wzorca):
     n = len(text)
@@ -106,32 +117,36 @@ znaleziono = False
 wynik = None
 
 # Szukanie współbieżne w przydzielonym fragmencie
-while True:
-    # sprawdzenie, czy inny proces już znalazł wynik
-    if comm.iprobe(source=MPI.ANY_SOURCE, tag=TAG_STOP):
-        wynik = comm.recv(source=MPI.ANY_SOURCE, tag=TAG_STOP)
-        break
-    
-    # Knuth-Morris-Pratt algorytm
-    if kmp_search(fragment, klucz):
-        znaleziono = True
-        wynik = 1
-        
-        # rozgłoszenie do pozostałych procesów, że znaleziono słowo
-        for p in range(liczba_procesow):
-            if p != nr_procesu:
-                comm.send(wynik, dest=p, tag=TAG_STOP)
-        print(f"Proces {nr_procesu}: znalazłem klucz w przedziale {start}:{end}")
-        break
-    else:
-        wynik = 0
-        break
+wynik_wyszukiwania = kmp_search_with_stop(fragment, klucz, comm, nr_procesu)
+
+if wynik_wyszukiwania == 1:
+    znaleziono = True
+    wynik = (1, nr_procesu)
+
+    # rozgłoszenie do pozostałych procesów, że znaleziono słowo
+    for p in range(liczba_procesow):
+        if p != nr_procesu:
+            comm.send((1, nr_procesu), dest=p, tag=TAG_STOP)
+
+    print(f"Proces {nr_procesu}: znalazłem klucz w przedziale {start}:{end}", flush=True)
+
+elif wynik_wyszukiwania == -1:
+    wynik = (1, None)
+
+else:
+    wynik = (0, None)
 
 # Zebranie wyniku
 wyniki = comm.gather(wynik, root=0)
 
 if nr_procesu == 0:
-    if 1 in wyniki:
+    czy_znaleziono = False
+
+    for wynik_procesu in wyniki:
+        if wynik_procesu[0] == 1:
+            czy_znaleziono = True
+
+    if czy_znaleziono:
         print(1)
     else:
         print(0)
